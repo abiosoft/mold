@@ -176,7 +176,7 @@ func parseLayout(root templateSet, t templateFile, funcMap template.FuncMap) (*t
 	}
 
 	// process template tree for layout
-	refs, err := processTree(layout, t.body, true, true)
+	refs, err := processTree(layout, t.body)
 	if err != nil {
 		return nil, fmt.Errorf("error processing layout: %w", err)
 	}
@@ -206,7 +206,7 @@ func parseView(root templateSet, layout *template.Template, name, raw string) (*
 	}
 
 	// process template tree for body
-	refs, err := processTree(body, raw, false, true)
+	refs, err := processTree(body, raw)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing view '%s': %w", name, err)
 	}

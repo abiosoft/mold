@@ -9,8 +9,8 @@ import (
 
 // processTree traverses the node tree and swaps render and partial declarations with equivalent template calls.
 // It returns all referenced templates encountered during the traversal.
-func processTree(t *template.Template, raw string, render, partial bool) ([]templateName, error) {
-	ts, err := processNode(nil, 0, t.Tree.Root, render, partial)
+func processTree(t *template.Template, raw string) ([]templateName, error) {
+	ts, err := processNode(nil, 0, t.Tree.Root)
 	if err != nil {
 		if err, ok := err.(posErr); ok {
 			line, col := pos(raw, err.pos)
@@ -21,13 +21,7 @@ func processTree(t *template.Template, raw string, render, partial bool) ([]temp
 	return ts, nil
 }
 
-func processNode(
-	parent *parse.ListNode,
-	index int,
-	node parse.Node,
-	render,
-	partial bool,
-) (ts []templateName, err error) {
+func processNode(parent *parse.ListNode, index int, node parse.Node) (ts []templateName, err error) {
 	// appendResult appends the specified templates to the list of template names when there are no errors
 	appendResult := func(t []templateName, err1 error) {
 		if err1 != nil {
@@ -53,21 +47,21 @@ func processNode(
 	}
 
 	if w, ok := node.(*parse.WithNode); ok && w != nil {
-		appendResult(processNode(parent, index, w.List, render, partial))
-		appendResult(processNode(parent, index, w.ElseList, render, partial))
+		appendResult(processNode(parent, index, w.List))
+		appendResult(processNode(parent, index, w.ElseList))
 	}
 	if l, ok := node.(*parse.ListNode); ok && l != nil {
 		for i, n := range l.Nodes {
-			appendResult(processNode(l, i, n, render, partial))
+			appendResult(processNode(l, i, n))
 		}
 	}
 	if i, ok := node.(*parse.IfNode); ok && i != nil {
-		appendResult(processNode(parent, index, i.List, render, partial))
-		appendResult(processNode(parent, index, i.ElseList, render, partial))
+		appendResult(processNode(parent, index, i.List))
+		appendResult(processNode(parent, index, i.ElseList))
 	}
 	if r, ok := node.(*parse.RangeNode); ok && r != nil {
-		appendResult(processNode(parent, index, r.List, render, partial))
-		appendResult(processNode(parent, index, r.ElseList, render, partial))
+		appendResult(processNode(parent, index, r.List))
+		appendResult(processNode(parent, index, r.ElseList))
 	}
 
 	return ts, err
