@@ -66,7 +66,7 @@ To render a specific section, pass the section's name as an argument.
 </body>
 </html>
 ```
-The [default layout](https://github.com/abiosoft/mold/blob/main/layout.html) can be overriden
+The [default layout](https://github.com/abiosoft/mold/blob/main/layout.html) can be overridden
 by creating a custom layout file and specifying it as an option for a new instance.
 
 ```go
