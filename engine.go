@@ -41,7 +41,7 @@ func newEngine(fsys fs.FS, options ...Option) (Engine, error) {
 	m := moldEngine{}
 
 	// traverse to fetch all templates and populate the root template.
-	root, ts, err := walk(c.fs, c.exts.val)
+	root, ts, err := walk(c.fs, c.exts.val, c.funcMap.val)
 	if err != nil {
 		return nil, fmt.Errorf("error creating new engine: %w", err)
 	}
@@ -82,7 +82,7 @@ func (m moldEngine) Render(w io.Writer, view string, data any) error {
 	return nil
 }
 
-func walk(fsys fs.FS, exts []string) (root templateSet, ts []templateFile, err error) {
+func walk(fsys fs.FS, exts []string, funcMap template.FuncMap) (root templateSet, ts []templateFile, err error) {
 	root = templateSet{}
 	err = fs.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -111,7 +111,7 @@ func walk(fsys fs.FS, exts []string) (root templateSet, ts []templateFile, err e
 			return err
 		}
 
-		if t, err := template.New(path).Funcs(placeholderFuncs).Parse(f); err != nil {
+		if t, err := template.New(path).Funcs(funcMap).Parse(f); err != nil {
 			return fmt.Errorf("error parsing template '%s': %w", path, err)
 		} else {
 			root[path] = t
@@ -158,7 +158,7 @@ func setup(c *Config, options ...Option) error {
 	}
 
 	// funcMap
-	funcMap := placeholderFuncs
+	funcMap := placeholderFuncs()
 	if c.funcMap.set {
 		for k, f := range c.funcMap.val {
 			funcMap[k] = f
@@ -257,9 +257,11 @@ func validExt(exts []string, ext string) bool {
 	return false
 }
 
-var placeholderFuncs = map[string]any{
-	renderFunc.String():  func(...string) string { return "" },
-	partialFunc.String(): func(string, ...any) string { return "" },
+func placeholderFuncs() template.FuncMap {
+	return map[string]any{
+		renderFunc.String():  func(...string) string { return "" },
+		partialFunc.String(): func(string, ...any) string { return "" },
+	}
 }
 
 type templateFile struct {
