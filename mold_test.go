@@ -32,7 +32,7 @@ func createTestFS(extraFiles ...testFile) fs.FS {
 func TestNew(t *testing.T) {
 	defer func() {
 		if err := recover(); err != nil {
-			t.Errorf("Must() expected no panic, got panic")
+			t.Errorf("Must() expected no panic, got panic: %v", err)
 		}
 	}()
 
@@ -75,6 +75,14 @@ func TestNew_LayoutParseError(t *testing.T) {
 	testFS := createTestFS(testFile{"layout.html", "{{partial}}"})
 
 	if _, err := New(testFS, WithLayout("layout.html")); err == nil {
+		t.Errorf("New() expected error, got nil")
+	}
+}
+
+func TestNew_LayoutInvalidExt(t *testing.T) {
+	testFS := createTestFS(testFile{"layout.txt", "{{partial}}"})
+
+	if _, err := New(testFS, WithLayout("layout.txt")); err == nil {
 		t.Errorf("New() expected error, got nil")
 	}
 }
@@ -196,7 +204,15 @@ func TestRender_ViewNotFound(t *testing.T) {
 	}
 }
 
-func TestRender_PartialNotFound(t *testing.T) {
+func TestRender_LayoutPartialNotFound(t *testing.T) {
+	testFS := createTestFS(testFile{"layout.html", `{{partial "invalid.html"}}`})
+
+	if _, err := New(testFS, WithLayout("layout.html")); err == nil {
+		t.Errorf("New() expected error,  got nil")
+	}
+}
+
+func TestRender_ViewPartialNotFound(t *testing.T) {
 	testFS := createTestFS(testFile{"view.html", `{{partial "invalid.html"}}`})
 
 	if _, err := New(testFS); err == nil {
@@ -212,6 +228,38 @@ func TestRender_InvalidData(t *testing.T) {
 	var buf bytes.Buffer
 	if err := engine.Render(&buf, "index.html", "something"); err == nil {
 		t.Errorf("Render() expected error, got nil")
+	}
+}
+
+func TestRender_ViewInvalidRender(t *testing.T) {
+	testFS := createTestFS(
+		testFile{"view.html", `{{render}}`},
+	)
+
+	if _, err := New(testFS); err == nil {
+		t.Errorf("New() expected error,  got nil")
+	}
+}
+
+func TestRender_PartialInvalidRender(t *testing.T) {
+	testFS := createTestFS(
+		testFile{"view.html", `{{partial "partial.html"}}`},
+		testFile{"view_partial.html", `{{render}}`},
+	)
+
+	if _, err := New(testFS); err == nil {
+		t.Errorf("New() expected error,  got nil")
+	}
+}
+
+func TestRender_PartialInvalidPartial(t *testing.T) {
+	testFS := createTestFS(
+		testFile{"view.html", `{{partial "partial.html"}}`},
+		testFile{"partial.html", `{{partial "view.html"}}`},
+	)
+
+	if _, err := New(testFS); err == nil {
+		t.Errorf("New() expected error,  got nil")
 	}
 }
 

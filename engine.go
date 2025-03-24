@@ -26,8 +26,8 @@ const (
 )
 
 type (
-	templateSet map[string]*template.Template
-	moldEngine  templateSet
+	templateSet map[string]*templateFile
+	moldEngine  map[string]*template.Template
 )
 
 func newEngine(fsys fs.FS, options ...Option) (Engine, error) {
@@ -40,29 +40,25 @@ func newEngine(fsys fs.FS, options ...Option) (Engine, error) {
 
 	m := moldEngine{}
 
-	// traverse to fetch all templates and populate the root template.
-	root, ts, err := walk(c.fs, c.exts.val, c.funcMap.val)
+	// traverse to fetch all templates
+	set, err := walk(c.fs, c.exts.val, c.funcMap.val)
 	if err != nil {
 		return nil, fmt.Errorf("error creating new engine: %w", err)
 	}
 
 	// process layout
-	layout, err := parseLayout(root, c.layoutFile, c.funcMap.val)
+	layout, err := parseLayout(set, c.layoutRaw, c.funcMap.val)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing layout: %w", err)
 	}
 
 	// process views
-	for _, t := range ts {
-		// ignore layout file
-		if t.name == c.layoutFile.name {
-			continue
-		}
-		view, err := parseView(root, layout, t.name, t.body)
+	for name := range set {
+		view, err := parseView(set, layout, name)
 		if err != nil {
 			return nil, err
 		}
-		m[t.name] = view
+		m[name] = view
 	}
 
 	return m, nil
@@ -82,8 +78,8 @@ func (m moldEngine) Render(w io.Writer, view string, data any) error {
 	return nil
 }
 
-func walk(fsys fs.FS, exts []string, funcMap template.FuncMap) (root templateSet, ts []templateFile, err error) {
-	root = templateSet{}
+func walk(fsys fs.FS, exts []string, funcMap template.FuncMap) (set templateSet, err error) {
+	set = templateSet{}
 	err = fs.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -106,6 +102,11 @@ func walk(fsys fs.FS, exts []string, funcMap template.FuncMap) (root templateSet
 			return nil
 		}
 
+		// skip layout files
+		if err := validateLayoutFile(exts, path); err == nil {
+			return nil
+		}
+
 		f, err := readFile(fsys, path)
 		if err != nil {
 			return err
@@ -114,8 +115,7 @@ func walk(fsys fs.FS, exts []string, funcMap template.FuncMap) (root templateSet
 		if t, err := template.New(path).Funcs(funcMap).Parse(f); err != nil {
 			return fmt.Errorf("error parsing template '%s': %w", path, err)
 		} else {
-			root[path] = t
-			ts = append(ts, templateFile{name: path, body: f})
+			set[path] = &templateFile{Template: t, body: f}
 		}
 
 		return nil
@@ -139,23 +139,24 @@ func setup(c *Config, options ...Option) error {
 		c.fs = sub
 	}
 
+	// extensions
+	if !c.exts.set {
+		c.exts.update(defaultExts)
+	}
+
 	// layout
-	c.layoutFile.typ = layoutType
 	if c.layout.set {
+		if err := validateLayoutFile(c.exts.val, c.layout.val); err != nil {
+			return fmt.Errorf("invalid layout file: %w", err)
+		}
 		f, err := readFile(c.fs, c.layout.val)
 		if err != nil {
 			return fmt.Errorf("error reading layout file '%s': %w", c.layout.val, err)
 		}
-		c.layoutFile.body = f
-		c.layoutFile.name = c.layout.val
+		c.layoutRaw = f
 	} else {
-		c.layoutFile.body = defaultLayout
-		c.layoutFile.name = "default_layout"
-	}
-
-	// extensions
-	if !c.exts.set {
-		c.exts.update(defaultExts)
+		c.layout.update("default_layout")
+		c.layoutRaw = defaultLayout
 	}
 
 	// funcMap
@@ -170,14 +171,20 @@ func setup(c *Config, options ...Option) error {
 	return nil
 }
 
-func parseLayout(root templateSet, t templateFile, funcMap template.FuncMap) (*template.Template, error) {
-	layout, err := template.New("layout").Funcs(funcMap).Parse(t.body)
+func parseLayout(root templateSet, layoutRaw string, funcMap template.FuncMap) (*templateFile, error) {
+	t, err := template.New("layout").Funcs(funcMap).Parse(layoutRaw)
 	if err != nil {
 		return nil, err
 	}
 
+	layout := &templateFile{
+		Template: t,
+		typ:      layoutType,
+		body:     layoutRaw,
+	}
+
 	// process template tree for layout
-	refs, err := processTree(layout, t.body)
+	refs, err := processTree(layout)
 	if err != nil {
 		return nil, fmt.Errorf("error processing layout: %w", err)
 	}
@@ -187,35 +194,43 @@ func parseLayout(root templateSet, t templateFile, funcMap template.FuncMap) (*t
 			if ref.typ == partialFunc {
 				return nil, fmt.Errorf("error parsing template '%s': %w", ref.name, ErrNotFound)
 			}
-			t, _ = template.New(ref.name).Parse("")
+			tpl, _ := template.New(ref.name).Parse("") // safe to ignore the err
+			t = &templateFile{Template: tpl}
 		}
+
+		t.typ = partialType
+		if err := parsePartial(t); err != nil {
+			return nil, fmt.Errorf("error parsing partial: '%s': %w", ref.name, err)
+		}
+
 		layout.AddParseTree(ref.name, t.Tree)
 	}
 
 	return layout, nil
 }
 
-func parseView(root templateSet, layout *template.Template, name, raw string) (*template.Template, error) {
-	view, err := layout.Clone()
-	if err != nil {
-		return nil, fmt.Errorf("error creating layout for view '%s': %w", name, err)
-	}
+func parseView(set templateSet, layout *templateFile, name string) (*template.Template, error) {
+	view := template.Must(layout.Clone()) // safe
 
-	body := root[name]
-	if body == nil {
-		return nil, ErrNotFound
-	}
+	body := set[name]
+	body.typ = viewType
 
 	// process template tree for body
-	refs, err := processTree(body, raw)
+	refs, err := processTree(body)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing view '%s': %w", name, err)
 	}
 	for _, ref := range refs {
-		t := root[ref.name]
+		t := set[ref.name]
 		if t == nil {
 			return nil, fmt.Errorf("error parsing template '%s': %w", ref.name, ErrNotFound)
 		}
+
+		t.typ = partialType
+		if err := parsePartial(t); err != nil {
+			return nil, fmt.Errorf("error parsing partial: '%s': %w", ref.name, err)
+		}
+
 		view.AddParseTree(ref.name, t.Tree)
 	}
 
@@ -231,6 +246,11 @@ func parseView(root templateSet, layout *template.Template, name, raw string) (*
 	return view, nil
 }
 
+func parsePartial(partial *templateFile) error {
+	_, err := processTree(partial)
+	return err
+}
+
 func readFile(fsys fs.FS, name string) (string, error) {
 	f, err := fs.ReadFile(fsys, name)
 	if err != nil {
@@ -244,18 +264,29 @@ func validExt(exts []string, ext string) bool {
 	if ext == "" {
 		return false
 	}
-
 	sanitize := func(ext string) string {
 		return strings.ToLower(strings.TrimPrefix(ext, "."))
 	}
-
 	for _, e := range exts {
 		if sanitize(e) == sanitize(ext) {
 			return true
 		}
 	}
-
 	return false
+}
+
+func validateLayoutFile(exts []string, name string) error {
+	ext := filepath.Ext(name)
+	if !validExt(exts, ext) {
+		return fmt.Errorf("unsupported filename extension '%s'", ext)
+	}
+
+	nameOnly := strings.TrimSuffix(name, ext)
+	if !strings.HasSuffix(strings.ToLower(nameOnly), "layout") {
+		return fmt.Errorf("invalid file name, must be suffixed with 'layout'. e.g. layout%s", ext)
+	}
+
+	return nil
 }
 
 func placeholderFuncs() template.FuncMap {
@@ -275,9 +306,9 @@ const (
 )
 
 type templateFile struct {
-	name string
-	body string
+	*template.Template
 	typ  templateType
+	body string
 }
 
 type optionVal[T any] struct {

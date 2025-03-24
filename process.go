@@ -1,27 +1,25 @@
 package mold
 
 import (
-	"errors"
 	"fmt"
-	"html/template"
 	"text/template/parse"
 )
 
 // processTree traverses the node tree and swaps render and partial declarations with equivalent template calls.
 // It returns all referenced templates encountered during the traversal.
-func processTree(t *template.Template, raw string) ([]nestedFile, error) {
-	ts, err := processNode(t.Tree, nil, 0, t.Tree.Root)
+func processTree(t *templateFile) ([]nestedFile, error) {
+	ts, err := processNode(t, nil, 0, t.Tree.Root)
 	if err != nil {
 		if err, ok := err.(posErr); ok {
-			line, col := pos(raw, err.pos)
-			return ts, fmt.Errorf("%s:%d:%d: %w", t.Name(), line, col, err)
+			line, col := pos(t.body, err.pos)
+			return ts, fmt.Errorf("%s:%d:%d: %s: %w", t.Name(), line, col, t.typ, err)
 		}
 	}
 
 	return ts, nil
 }
 
-func processNode(tree *parse.Tree, parent *parse.ListNode, index int, node parse.Node) (ts []nestedFile, err error) {
+func processNode(root *templateFile, parent *parse.ListNode, index int, node parse.Node) (ts []nestedFile, err error) {
 	// appendResult appends the specified templates to the list of template names when there are no errors
 	appendResult := func(t []nestedFile, err1 error) {
 		if err1 != nil {
@@ -35,7 +33,7 @@ func processNode(tree *parse.Tree, parent *parse.ListNode, index int, node parse
 	if a, ok := node.(*parse.ActionNode); ok {
 		if len(a.Pipe.Cmds) > 0 {
 			funcName, tname, _ := getActionArgs(a.Pipe.Cmds[0])
-			if err := processActionNode(tree, parent, index, node, funcName); err != nil {
+			if err := processActionNode(root, parent, index, node, funcName); err != nil {
 				return ts, err
 			}
 			if funcName == partialFunc.String() && tname != "" {
@@ -47,38 +45,38 @@ func processNode(tree *parse.Tree, parent *parse.ListNode, index int, node parse
 	}
 
 	if w, ok := node.(*parse.WithNode); ok && w != nil {
-		appendResult(processNode(tree, parent, index, w.List))
-		appendResult(processNode(tree, parent, index, w.ElseList))
+		appendResult(processNode(root, parent, index, w.List))
+		appendResult(processNode(root, parent, index, w.ElseList))
 	}
 	if l, ok := node.(*parse.ListNode); ok && l != nil {
 		for i, n := range l.Nodes {
-			appendResult(processNode(tree, l, i, n))
+			appendResult(processNode(root, l, i, n))
 		}
 	}
 	if i, ok := node.(*parse.IfNode); ok && i != nil {
-		appendResult(processNode(tree, parent, index, i.List))
-		appendResult(processNode(tree, parent, index, i.ElseList))
+		appendResult(processNode(root, parent, index, i.List))
+		appendResult(processNode(root, parent, index, i.ElseList))
 	}
 	if r, ok := node.(*parse.RangeNode); ok && r != nil {
-		appendResult(processNode(tree, parent, index, r.List))
-		appendResult(processNode(tree, parent, index, r.ElseList))
+		appendResult(processNode(root, parent, index, r.List))
+		appendResult(processNode(root, parent, index, r.ElseList))
 	}
 
 	return ts, err
 }
 
-func processActionNode(tree *parse.Tree, parent *parse.ListNode, index int, node parse.Node, funcName string) error {
-	if parent == nil {
-		// this should never happen
-		return errors.New("processActionNode error: parent node is nil")
-	}
-
+func processActionNode(root *templateFile, parent *parse.ListNode, index int, node parse.Node, funcName string) error {
 	actionNode := node.(*parse.ActionNode)
 	cmd := actionNode.Pipe.Cmds[0]
 	_, name, field := getActionArgs(cmd)
 
-	if name == tree.ParseName {
-		return posErr{pos: int(actionNode.Pos), message: fmt.Sprintf(`cyclic reference for '%s'`, name)}
+	if name == root.Name() {
+		return posErr{pos: int(actionNode.Pos), message: "cyclic reference"}
+	}
+
+	// validate for view and partial
+	if invalidFuncType(root.typ, funcName) {
+		return posErr{pos: int(actionNode.Pos), message: fmt.Sprintf("%s not supported", funcName)}
 	}
 
 	var arg parse.Node = &parse.DotNode{}
@@ -90,7 +88,7 @@ func processActionNode(tree *parse.Tree, parent *parse.ListNode, index int, node
 			arg = field
 		}
 		if name == "" {
-			return posErr{pos: int(actionNode.Pos), message: `partial: path to partial file is not specified`}
+			return posErr{pos: int(actionNode.Pos), message: `view: path to partial file is not specified`}
 		}
 	case funcName == renderFunc.String():
 		if name == "" {
@@ -114,6 +112,17 @@ func processActionNode(tree *parse.Tree, parent *parse.ListNode, index int, node
 	// replace the ActionNode with a TemplateNode.
 	parent.Nodes[index] = tn
 	return nil
+}
+
+func invalidFuncType(typ templateType, funcName string) bool {
+	switch typ {
+	case viewType:
+		return funcName == renderFunc.String()
+	case partialType:
+		return funcName == renderFunc.String() || funcName == partialFunc.String()
+	}
+
+	return false
 }
 
 func getActionArgs(cmd *parse.CommandNode) (fn, file string, field *parse.FieldNode) {

@@ -29,8 +29,8 @@ type Engine interface {
 
 // Config is the configuration for a new [Engine].
 type Config struct {
-	fs         fs.FS
-	layoutFile templateFile
+	fs        fs.FS
+	layoutRaw string
 
 	// options
 	root    optionVal[string]
@@ -47,6 +47,15 @@ type Option func(*Config)
 var ErrNotFound = errors.New("template not found")
 
 // New creates a new [Engine] with fs as the underlying filesystem.
+//
+// The directory will be traversed and all files matching the configured filename extensions would be parsed.
+// The filename extensions can be configured with [WithExt].
+//
+// At most one layout file would be parsed, if set with [WithLayout]. Others would be skipped.
+//
+// Layout files are files suffixed (case insensitively) with "layout" before the filename extension.
+// e.g. "layout.html", "Layout.html", "AppLayout.html", "app_layout.html" would all be regarded as layout files
+// and skipped.
 //
 // Example:
 //
