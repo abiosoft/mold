@@ -121,7 +121,7 @@ func WithLayout(layout string) Option {
 // WithExt configures the filename extensions for the templates.
 // Only files with the specified extensions would be parsed.
 //
-//	Default: ["html", "gohtml", "tpl", "tmpl"]
+//	Default: [".html", ".gohtml", ".tpl", ".tmpl"]
 func WithExt(exts ...string) Option {
 	return func(c *Config) { c.exts = newVal(exts) }
 }

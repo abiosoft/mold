@@ -16,7 +16,7 @@ var (
 	defaultLayout string
 
 	// default filename extenstions for template files
-	defaultExts = []string{"html", "gohtml", "tpl", "tmpl"}
+	defaultExts = []string{".html", ".gohtml", ".tpl", ".tmpl"}
 )
 
 const (
@@ -98,7 +98,7 @@ func walk(fsys fs.FS, exts []string, funcMap template.FuncMap) (set templateSet,
 		}
 
 		ext := filepath.Ext(d.Name())
-		if !validExt(exts, ext) {
+		if !hasExt(exts, ext) {
 			return nil
 		}
 
@@ -260,7 +260,7 @@ func readFile(fsys fs.FS, name string) (string, error) {
 	return string(f), nil
 }
 
-func validExt(exts []string, ext string) bool {
+func hasExt(exts []string, ext string) bool {
 	if ext == "" {
 		return false
 	}
@@ -277,7 +277,7 @@ func validExt(exts []string, ext string) bool {
 
 func validateLayoutFile(exts []string, name string) error {
 	ext := filepath.Ext(name)
-	if !validExt(exts, ext) {
+	if !hasExt(exts, ext) {
 		return fmt.Errorf("unsupported filename extension '%s'", ext)
 	}
 

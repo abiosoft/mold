@@ -259,7 +259,7 @@ func TestRender_PartialInvalidPartial(t *testing.T) {
 	)
 
 	if _, err := New(testFS); err == nil {
-		t.Errorf("New() expected error,  got nil")
+		t.Errorf("New() expected error, got nil")
 	}
 }
 
