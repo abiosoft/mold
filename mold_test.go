@@ -295,3 +295,21 @@ func TestRender_TemplateRange(t *testing.T) {
 		t.Errorf("Render() expected nil, got %v", err)
 	}
 }
+
+func TestHideFS_Hidden(t *testing.T) {
+	testFS := createTestFS()
+	hideFS := HideFS(testFS)
+
+	if _, err := hideFS.Open("view.html"); err == nil {
+		t.Errorf("Open() expected error, got nil")
+	}
+}
+
+func TestHideFS_Allowed(t *testing.T) {
+	testFS := createTestFS()
+	hideFS := HideFS(testFS, ".tpl")
+
+	if _, err := hideFS.Open("view.html"); err != nil {
+		t.Errorf("Open() expected nil, got %v", err)
+	}
+}

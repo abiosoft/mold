@@ -5,6 +5,7 @@ import (
 	"html/template"
 	"io"
 	"io/fs"
+	"path/filepath"
 )
 
 // Engine represents a web page renderer, incorporating a specific layout.
@@ -128,4 +129,44 @@ func WithExt(exts ...string) Option {
 // WithFuncMap configures the custom Go template functions.
 func WithFuncMap(funcMap template.FuncMap) Option {
 	return func(c *Config) { c.funcMap = newVal(funcMap) }
+}
+
+// HideFS wraps an [fs.FS] and restricts access to files with specified extensions,
+// essentially hiding them.
+// This is useful to prevent exposing sensitive files like templates when serving
+// static assets and templates from the same directory.
+//
+// Example:
+//
+//	var dir = os.DirFS("web")
+//	http.Handle("/static", http.FileServerFS(mold.HideFS(dir)))
+//
+// If no extensions are specified, the default template extensions are used.
+//
+//	Default: [".html", ".gohtml", ".tpl", ".tmpl"]
+func HideFS(fsys fs.FS, exts ...string) fs.FS {
+	if len(exts) == 0 {
+		exts = defaultExts
+	}
+	return &staticFS{
+		FS:   fsys,
+		exts: exts,
+	}
+}
+
+var _ fs.FS = (*staticFS)(nil)
+
+type staticFS struct {
+	exts []string
+	fs.FS
+}
+
+// Open implements fs.FS.
+func (s *staticFS) Open(name string) (fs.File, error) {
+	ext := filepath.Ext(name)
+	if hasExt(s.exts, ext) {
+		return nil, fs.ErrNotExist
+	}
+
+	return s.FS.Open(name)
 }
