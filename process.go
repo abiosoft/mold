@@ -9,7 +9,7 @@ import (
 
 // processTree traverses the node tree and swaps render and partial declarations with equivalent template calls.
 // It returns all referenced templates encountered during the traversal.
-func processTree(t *template.Template, raw string) ([]templateName, error) {
+func processTree(t *template.Template, raw string) ([]nestedFile, error) {
 	ts, err := processNode(t.Tree, nil, 0, t.Tree.Root)
 	if err != nil {
 		if err, ok := err.(posErr); ok {
@@ -21,9 +21,9 @@ func processTree(t *template.Template, raw string) ([]templateName, error) {
 	return ts, nil
 }
 
-func processNode(tree *parse.Tree, parent *parse.ListNode, index int, node parse.Node) (ts []templateName, err error) {
+func processNode(tree *parse.Tree, parent *parse.ListNode, index int, node parse.Node) (ts []nestedFile, err error) {
 	// appendResult appends the specified templates to the list of template names when there are no errors
-	appendResult := func(t []templateName, err1 error) {
+	appendResult := func(t []nestedFile, err1 error) {
 		if err1 != nil {
 			err = err1
 		}
@@ -39,9 +39,9 @@ func processNode(tree *parse.Tree, parent *parse.ListNode, index int, node parse
 				return ts, err
 			}
 			if funcName == partialFunc.String() && tname != "" {
-				ts = append(ts, templateName{name: tname, typ: partialFunc})
+				ts = append(ts, nestedFile{name: tname, typ: partialFunc})
 			} else if funcName == renderFunc.String() && tname != "" {
-				ts = append(ts, templateName{name: tname, typ: renderFunc})
+				ts = append(ts, nestedFile{name: tname, typ: renderFunc})
 			}
 		}
 	}
@@ -163,16 +163,16 @@ func pos(body string, pos int) (line int, col int) {
 	return line, col
 }
 
-type templateFunc string
+type nestingFunc string
 
-func (t templateFunc) String() string { return string(t) }
+func (t nestingFunc) String() string { return string(t) }
 
 const (
-	renderFunc  templateFunc = "render"
-	partialFunc templateFunc = "partial"
+	renderFunc  nestingFunc = "render"
+	partialFunc nestingFunc = "partial"
 )
 
-type templateName struct {
+type nestedFile struct {
 	name string
-	typ  templateFunc
+	typ  nestingFunc
 }

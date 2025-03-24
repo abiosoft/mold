@@ -140,6 +140,7 @@ func setup(c *Config, options ...Option) error {
 	}
 
 	// layout
+	c.layoutFile.typ = layoutType
 	if c.layout.set {
 		f, err := readFile(c.fs, c.layout.val)
 		if err != nil {
@@ -264,9 +265,19 @@ func placeholderFuncs() template.FuncMap {
 	}
 }
 
+type templateType string
+
+// template types
+const (
+	layoutType  templateType = "layout"
+	viewType    templateType = "view"
+	partialType templateType = "partial"
+)
+
 type templateFile struct {
 	name string
 	body string
+	typ  templateType
 }
 
 type optionVal[T any] struct {
