@@ -87,6 +87,14 @@ func TestNew_ViewParseError(t *testing.T) {
 	}
 }
 
+func TestNew_CyclicReferenceError(t *testing.T) {
+	testFS := createTestFS(testFile{"parse.html", `{{partial "parse.html"}}`})
+
+	if _, err := New(testFS); err == nil {
+		t.Errorf("New() expected error, got nil %v", err)
+	}
+}
+
 func TestNew_Ext(t *testing.T) {
 	testFS := createTestFS(
 		testFile{"layout.mine", "{{render}}"},
