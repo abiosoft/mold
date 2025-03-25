@@ -19,12 +19,6 @@ var (
 	defaultExts = []string{".html", ".gohtml", ".tpl", ".tmpl"}
 )
 
-const (
-	// sections
-	bodySection = "body"
-	headSection = "head"
-)
-
 type (
 	templateSet map[string]*templateFile
 	moldEngine  map[string]*template.Template
@@ -238,7 +232,7 @@ func parseView(set templateSet, layout *templateFile, name string) (*template.Te
 	for _, t := range body.Templates() {
 		tName := t.Name()
 		if tName == name {
-			tName = bodySection
+			tName = "body"
 		}
 		view.AddParseTree(tName, t.Tree)
 	}

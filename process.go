@@ -88,7 +88,7 @@ func processActionNode(root *templateFile, parent *parse.ListNode, index int, no
 			arg = field
 		}
 		if name == "" {
-			return posErr{pos: int(actionNode.Pos), message: `view: path to partial file is not specified`}
+			return posErr{pos: int(actionNode.Pos), message: `path to partial file is not specified`}
 		}
 	case funcName == renderFunc.String():
 		if name == "" {

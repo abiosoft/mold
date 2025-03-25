@@ -131,9 +131,9 @@ func WithFuncMap(funcMap template.FuncMap) Option {
 	return func(c *Config) { c.funcMap = newVal(funcMap) }
 }
 
-// HideFS wraps an [fs.FS] and restricts access to files with specified extensions,
+// HideFS wraps an [fs.FS] and restricts access to files with the specified extensions,
 // essentially hiding them.
-// This is useful to prevent exposing sensitive files like templates when serving
+// This is useful to prevent exposing templates (or sensitive files) when serving
 // static assets and templates from the same directory.
 //
 // Example:
@@ -148,21 +148,21 @@ func HideFS(fsys fs.FS, exts ...string) fs.FS {
 	if len(exts) == 0 {
 		exts = defaultExts
 	}
-	return &staticFS{
+	return &hideFS{
 		FS:   fsys,
 		exts: exts,
 	}
 }
 
-var _ fs.FS = (*staticFS)(nil)
+var _ fs.FS = (*hideFS)(nil)
 
-type staticFS struct {
+type hideFS struct {
 	exts []string
 	fs.FS
 }
 
 // Open implements fs.FS.
-func (s *staticFS) Open(name string) (fs.File, error) {
+func (s *hideFS) Open(name string) (fs.File, error) {
 	ext := filepath.Ext(name)
 	if hasExt(s.exts, ext) {
 		return nil, fs.ErrNotExist
